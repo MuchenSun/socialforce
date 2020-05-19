@@ -3,5 +3,6 @@
 __version__ = '0.1.0'
 
 from .simulator import Simulator
+from .simulator_multidest import SimulatorMultiDest
 from .potentials import PedPedPotential, PedSpacePotential
 from . import show

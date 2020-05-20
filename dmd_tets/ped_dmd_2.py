@@ -1,6 +1,7 @@
 """
-This is first test for using DMD to pedestrain prediction, it's
-based on test4.py and use only basic DMD object
+This is second test for using DMD to pedestrain prediction, it's
+based on the first test
+I keep the parameters relatively good in this one
 """
 
 import sys
@@ -11,7 +12,7 @@ import numpy as np
 import pytest
 import socialforce
 import time
-from pydmd import DMD
+from pydmd import HODMD, DMD
 from past.utils import old_div
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -124,7 +125,7 @@ def data_gen():
                                        ped_space=ped_space,
                                        dest=dest,
                                        delta_t=0.1)
-    states = np.stack([s.step().state.copy() for _ in range(720)])
+    states = np.stack([s.step().state.copy() for _ in range(1020)])
 
     # print(space[0].shape)
 
@@ -132,11 +133,11 @@ def data_gen():
     return states
 
 if __name__ == "__main__":
-    states = data_gen()[:, :, 0:4]
+    states = data_gen()[:, :, 0:2]
     print("test data generated.")
     states = np.reshape(states, (states.shape[0], -1)).T
-    train_data = states[:,500:701]
-    test_data = states[:,700:]
+    train_data = states[:,850:1001]
+    test_data = states[:,1000:]
 
     start = time.time()
     dmd = DMD(svd_rank=40, opt=True)
@@ -144,7 +145,7 @@ if __name__ == "__main__":
     print("DMD fit finished: ", time.time()-start)
 
     omega = old_div(np.log(dmd.eigs), dmd.original_time['dt'])
-    dmd_timesteps = np.arange(200, 220, 1)
+    dmd_timesteps = np.arange(150, 170, 1)
     vander = np.exp(np.outer( omega,  dmd_timesteps - dmd.original_time['t0'] ))
     dynamics = vander * dmd._b[:, None]
     test_data_dmd = np.dot(dmd.modes, dynamics)
@@ -175,9 +176,9 @@ if __name__ == "__main__":
 
     print(test_data.shape)
     for p in range(40):
-        traj = test_data[4*p : 4*p+2, :]
+        traj = test_data[2*p : 2*p+2, :]
         ax.scatter(traj[0,:], traj[1,:], c='b', s=5)
 
-        traj_dmd = test_data_dmd[4*p : 4*p+2, :]
+        traj_dmd = test_data_dmd[2*p : 2*p+2, :]
         ax.scatter(traj_dmd[0,:], traj_dmd[1,:], c='y', s=5)
     plt.show()

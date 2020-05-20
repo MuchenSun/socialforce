@@ -1,6 +1,5 @@
 """
-This is first test for using DMD to pedestrain prediction, it's
-based on test4.py and use only basic DMD object
+This version aims for animation and sliding window mechanism
 """
 
 import sys
@@ -11,11 +10,15 @@ import numpy as np
 import pytest
 import socialforce
 import time
-from pydmd import DMD
+from pydmd import HODMD, DMD
 from past.utils import old_div
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from tqdm import tqdm
 
+terminal = 1000
+window_size = 200
+predict_size = 10
 
 def distance_field(grid, state):
     start = time.time()
@@ -30,12 +33,17 @@ def distance_field(grid, state):
     # print("time: ", time.time()-start)
     return dist_xy
 
-def animate2(states, space, dest=None):
+def animate2(states, space, dest=None, true_traj=None, dmd_traj=None):
     # render data to get necessary parameters
     time = states.shape[0]
     num_ped = states.shape[1]
     # configure canvas
     fig = plt.gcf()
+    # other configuration
+    true_traj = np.array(true_traj)
+    dmd_traj = np.array(dmd_traj)
+    print("true_traj.shape:", true_traj.shape)
+    print("dmd_traj.shape: ", dmd_traj.shape)
 
     # Figure 1: pedestrian visualization
     ax1 = fig.add_subplot(121)
@@ -50,6 +58,8 @@ def animate2(states, space, dest=None):
     ax1.set_ylim(-0.5, 15.5)
     # initialize plots for peds
     peds = ax1.scatter([], [], c='r')
+    true_traj_points = ax1.scatter([], [], c='b', s=5)
+    dmd_traj_points = ax1.scatter([], [], c='y', s=5)
 
     # Figure 2: distance field visualization
     ax2 = fig.add_subplot(122)
@@ -71,6 +81,19 @@ def animate2(states, space, dest=None):
         # scatter
         peds.set_offsets(snapshot[:,0:2])
 
+        # Figure 1: traj
+        if t < window_size-1 or t > terminal-predict_size-1:
+            true_traj_points.set_offsets([-10, -10])
+            dmd_traj_points.set_offsets([-10, -10])
+        else:
+            curr_true_traj_x = true_traj[t+1-window_size][0::2].reshape(-1)
+            curr_true_traj_y = true_traj[t+1-window_size][1::2].reshape(-1)
+            true_traj_points.set_offsets(np.array([curr_true_traj_x, curr_true_traj_y]).T)
+
+            curr_dmd_traj_x = dmd_traj[t+1-window_size][0::2].reshape(-1)
+            curr_dmd_traj_y = dmd_traj[t+1-window_size][1::2].reshape(-1)
+            dmd_traj_points.set_offsets(np.array([curr_dmd_traj_x, curr_dmd_traj_y]).T)
+
         # Figure 2: distance field
         ax2.clear()
         vals = distance_field(grid, snapshot)
@@ -78,7 +101,7 @@ def animate2(states, space, dest=None):
         ax2.cla()
         ax2.contourf(*xy, vals, levels=50)
 
-        return [peds]
+        return [peds, true_traj_points, dmd_traj_points]
     # start animation
     anim = animation.FuncAnimation(fig, sub_animate, frames=time, interval=40)
     plt.show()
@@ -124,60 +147,56 @@ def data_gen():
                                        ped_space=ped_space,
                                        dest=dest,
                                        delta_t=0.1)
-    states = np.stack([s.step().state.copy() for _ in range(720)])
+    # states = np.stack([s.step().state.copy() for _ in range(1020)])
+
+    # main simultion loop
+    states = []
+    true_traj = []
+    dmd_traj = []
+
+    dmd = DMD(svd_rank=40, opt=True)
+
+    counter = 0
+    for i in tqdm(range(terminal)):
+        curr_state = s.step().state.copy()
+        states.append(curr_state)
+        if i < window_size-1 or i > terminal-predict_size-1:
+            pass
+        else:
+            counter += 1
+            window = np.array( states[i+1-window_size:i+1] )
+            train_data = np.reshape( window[:, :, 0:2],
+                                     (window.shape[0], -1) ).T
+            dmd.fit(train_data)
+            # print(i, train_data.shape)
+
+            omega = old_div(np.log(dmd.eigs), dmd.original_time['dt'])
+            dmd_timesteps = np.arange(i, i+predict_size, 1)
+            vander = np.exp(
+                    np.outer(omega, dmd_timesteps-0)
+                )
+            dynamics = vander * dmd._b[:, None]
+            predict_data = np.dot(dmd.modes, dynamics)
+            diff = predict_data[:,0] - curr_state[:,0:2].reshape(-1)
+            predict_data -= diff[:,np.newaxis]
+            dmd_traj.append(predict_data)
+    print("counter: ", counter)
+
+    for i in np.arange(window_size-1+predict_size, terminal, 1):
+        traj = np.array( states[i-predict_size:i] )
+        test_data = np.reshape( traj[:, :, 0:2],
+                                (traj.shape[0], -1) ).T
+
+        true_traj.append(test_data)
+
+
+    states = np.array(states)
 
     # print(space[0].shape)
 
-    # animate2(states, space, dest)
+    animate2(states, space, dest, true_traj, dmd_traj)
     return states
 
 if __name__ == "__main__":
-    states = data_gen()[:, :, 0:4]
-    print("test data generated.")
-    states = np.reshape(states, (states.shape[0], -1)).T
-    train_data = states[:,500:701]
-    test_data = states[:,700:]
+    states = data_gen()[:, :, 0:2]
 
-    start = time.time()
-    dmd = DMD(svd_rank=40, opt=True)
-    dmd.fit(train_data)
-    print("DMD fit finished: ", time.time()-start)
-
-    omega = old_div(np.log(dmd.eigs), dmd.original_time['dt'])
-    dmd_timesteps = np.arange(200, 220, 1)
-    vander = np.exp(np.outer( omega,  dmd_timesteps - dmd.original_time['t0'] ))
-    dynamics = vander * dmd._b[:, None]
-    test_data_dmd = np.dot(dmd.modes, dynamics)
-    print("DMD prediction finished.")
-
-    print(test_data.shape)
-    print((test_data_dmd[1,:] - test_data[1,:]).real)
-
-
-    print(train_data[0:10,-1])
-    print(test_data[0:10, 0])
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.set_aspect('equal', 'box')
-
-    snapshot = train_data[:, -1].reshape(40, -1)
-    ped_xy = snapshot[:,0:2].T
-    ax.scatter(ped_xy[0], ped_xy[1], c='r', s=100)
-
-    diff = (test_data_dmd[:,0] - test_data[:,0]).real
-    print("diff.shape: ", diff.shape)
-    for i in range(diff.shape[0]):
-        test_data_dmd[i,:] -= diff[i]
-    test_data_dmd = test_data_dmd.real
-
-    print("verify first element truncation: ", test_data_dmd[0:10,0], test_data[0:10,0])
-
-    print(test_data.shape)
-    for p in range(40):
-        traj = test_data[4*p : 4*p+2, :]
-        ax.scatter(traj[0,:], traj[1,:], c='b', s=5)
-
-        traj_dmd = test_data_dmd[4*p : 4*p+2, :]
-        ax.scatter(traj_dmd[0,:], traj_dmd[1,:], c='y', s=5)
-    plt.show()

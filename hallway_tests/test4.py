@@ -12,39 +12,29 @@ import pytest
 import socialforce
 import time
 
-def distance_field(grid, state):
-    """compute distance field"""
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        cell = grid[i,:]
-        dists = []
-        for j in range(state.shape[0]):
-            agent = state[j][0:2]
-            dist = np.sqrt( np.sum((cell-agent)**2) )
-            vals[i] += dist
-    vals = vals / np.sum(vals)
-    return vals
-
-def distance_field2(grid, state):
-    vals = np.zeros(grid.shape[0])
-    for i in range(state.shape[0]):
-        vals += np.sqrt( np.sum( (grid-state[i][0:2])**2 , axis=1) )
-    return vals / np.sum(vals)
-
-def distance_field3(grid, state):
-    start = time.time()
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        vals[i] += np.sqrt( np.sum( (grid[i,:]-state[:,0:2])**2 , axis=1) ).min()
-    print("time: ", time.time()-start)
-    return vals / np.sum(vals)
-
 def distance_field4(grid, state):
     start = time.time()
     grid_x = grid[:,0]
     grid_y = grid[:,1]
     state_x = state[:,0][:, np.newaxis]
     state_y = state[:,1][:, np.newaxis]
+    diff_x = grid_x - state_x
+    diff_y = grid_y - state_y
+    diff_xy = np.sqrt(diff_x**2 + diff_y**2)
+    dist_xy = diff_xy.min(axis=0)
+    print("time: ", time.time()-start)
+    return dist_xy
+
+def distance_field5(grid, state, space):
+    start = time.time()
+    grid_x = grid[:,0]
+    grid_y = grid[:,1]
+    space = np.array(space).reshape(-1,2)
+    space_x = space[:,0]
+    space_y = space[:,1]
+    print(space_x.shape)
+    state_x = np.concatenate((state[:,0], space_x))[:, np.newaxis]
+    state_y = np.concatenate((state[:,1], space_y))[:, np.newaxis]
     diff_x = grid_x - state_x
     diff_y = grid_y - state_y
     diff_xy = np.sqrt(diff_x**2 + diff_y**2)
@@ -98,7 +88,7 @@ def animate2(states, space, dest=None):
 
         # Figure 2: distance field
         ax2.clear()
-        vals = distance_field4(grid, snapshot)
+        vals = distance_field5(grid, snapshot, space)
         vals = vals.reshape(50,50)
         ax2.cla()
         ax2.contourf(*xy, vals, levels=50)
@@ -111,7 +101,7 @@ def animate2(states, space, dest=None):
 
 def main():
     field_size = 15
-    num_peds = 20
+    num_peds = 10
     dest = np.array([
             [2.0, 2.0],
             [2.0, 7.5],
@@ -138,10 +128,10 @@ def main():
     initial_state = np.array(initial_state)
 
     space = [
-        np.array([(x, 0) for x in np.linspace(0, 15, 1000)]),
-        np.array([(x,15) for x in np.linspace(0, 15, 1000)]),
-        np.array([( 0, y) for y in np.linspace(0, 15, 1000)]),
-        np.array([(15, y) for y in np.linspace(0, 15, 1000)])
+        np.array([(x, 0) for x in np.linspace(0, 15, 200)]),
+        np.array([(x,15) for x in np.linspace(0, 15, 200)]),
+        np.array([( 0, y) for y in np.linspace(0, 15, 200)]),
+        np.array([(15, y) for y in np.linspace(0, 15, 200)])
     ]
     ped_space = socialforce.PedSpacePotential(space)
 

@@ -18,8 +18,8 @@ from matplotlib import animation
 from tqdm import tqdm
 
 terminal = 1000
-window_size = 100
-predict_size = 10
+window_size = 200
+predict_size = 5
 
 def distance_field(grid, state):
     start = time.time()
@@ -41,8 +41,8 @@ def animate2(states, space, dest=None, true_traj=None, dmd_traj=None):
     # configure canvas
     fig = plt.gcf()
     # other configuration
-    true_traj = np.array(true_traj)
-    dmd_traj = np.array(dmd_traj)
+    true_traj = np.array(true_traj).real
+    dmd_traj = np.array(dmd_traj).real
     print("true_traj.shape:", true_traj.shape)
     print("dmd_traj.shape: ", dmd_traj.shape)
 

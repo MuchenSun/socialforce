@@ -12,32 +12,6 @@ import pytest
 import socialforce
 import time
 
-def distance_field(grid, state):
-    """compute distance field"""
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        cell = grid[i,:]
-        dists = []
-        for j in range(state.shape[0]):
-            agent = state[j][0:2]
-            dist = np.sqrt( np.sum((cell-agent)**2) )
-            vals[i] += dist
-    vals = vals / np.sum(vals)
-    return vals
-
-def distance_field2(grid, state):
-    vals = np.zeros(grid.shape[0])
-    for i in range(state.shape[0]):
-        vals += np.sqrt( np.sum( (grid-state[i][0:2])**2 , axis=1) )
-    return vals / np.sum(vals)
-
-def distance_field3(grid, state):
-    start = time.time()
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        vals[i] += np.sqrt( np.sum( (grid[i,:]-state[:,0:2])**2 , axis=1) ).min()
-    print("time: ", time.time()-start)
-    return vals / np.sum(vals)
 
 def distance_field4(grid, state):
     start = time.time()
@@ -45,6 +19,23 @@ def distance_field4(grid, state):
     grid_y = grid[:,1]
     state_x = state[:,0][:, np.newaxis]
     state_y = state[:,1][:, np.newaxis]
+    diff_x = grid_x - state_x
+    diff_y = grid_y - state_y
+    diff_xy = np.sqrt(diff_x**2 + diff_y**2)
+    dist_xy = diff_xy.min(axis=0)
+    print("time: ", time.time()-start)
+    return dist_xy
+
+def distance_field5(grid, state, space):
+    start = time.time()
+    grid_x = grid[:,0]
+    grid_y = grid[:,1]
+    space = np.array(space).reshape(-1,2)
+    space_x = space[:,0]
+    space_y = space[:,1]
+    print(space_x.shape)
+    state_x = np.concatenate((state[:,0], space_x))[:, np.newaxis]
+    state_y = np.concatenate((state[:,1], space_y))[:, np.newaxis]
     diff_x = grid_x - state_x
     diff_y = grid_y - state_y
     diff_xy = np.sqrt(diff_x**2 + diff_y**2)
@@ -63,7 +54,7 @@ def animate2(states, space, dest=None):
     fig = plt.gcf()
 
     # Figure 1: pedestrian visualization
-    ax1 = fig.add_subplot(121)
+    ax1 = fig.add_subplot(211)
     # generate background (plot space)
     for item in space: # each item is a 2D array
         ax1.scatter(item[:,0], item[:,1], c='k')
@@ -71,15 +62,17 @@ def animate2(states, space, dest=None):
         ax1.scatter(dest[:,0], dest[:,1], c='b', marker='+', s=100)
     # configure canvas
     ax1.set_aspect('equal', 'box')
-    ax1.set_xlim(-0.5, 15.5)
-    ax1.set_ylim(-0.5, 15.5)
+    ax1.set_xlim(-0.5, 20.5)
+    ax1.set_ylim(-0.5,  5.5)
     # initialize plots for peds
     peds = ax1.scatter([], [], c='r')
 
     # Figure 2: distance field visualization
-    ax2 = fig.add_subplot(122)
+    ax2 = fig.add_subplot(212)
     ax2.set_aspect('equal', 'box')
-    grid = np.meshgrid(*[np.linspace(0, 15, 50) for _ in range(2)])
+    ax2.set_xlim(-0.5, 20.5)
+    ax2.set_ylim(-0.5 ,20.5)
+    grid = np.meshgrid(*[np.linspace(0, 20, 50), np.linspace(0, 5, 50)])
     grid = np.c_[grid[0].ravel(), grid[1].ravel()] # 2*N array
     xy = []
     for g in grid.T:
@@ -98,39 +91,34 @@ def animate2(states, space, dest=None):
 
         # Figure 2: distance field
         ax2.clear()
-        vals = distance_field4(grid, snapshot)
+        vals = distance_field5(grid, snapshot, space)
         vals = vals.reshape(50,50)
         ax2.cla()
         ax2.contourf(*xy, vals, levels=50)
 
         return [peds]
     # start animation
-    anim = animation.FuncAnimation(fig, sub_animate, frames=time, interval=40)
+    anim = animation.FuncAnimation(fig, sub_animate, frames=time, interval=25)
     plt.show()
 
 
 def main():
     field_size = 15
-    num_peds = 20
+    num_peds = 1
     dest = np.array([
-            [2.0, 2.0],
-            [2.0, 7.5],
-            [2.0, 13.0],
-            [7.5, 2.0],
-            [7.5, 7.5],
-            [7.5, 13.0],
-            [13.0, 2.0],
-            [13.0, 7.5],
-            [13.0, 13.0]
+            [1.0, 1.0],
+            [1.0, 4.0],
+            [19.0, 1.0],
+            [19.0, 4.0]
         ])
 
     initial_state = []
     for i in range(num_peds):
         ped = np.zeros(6)
-        ped[0] = np.random.uniform(1, 5)
-        ped[1] = np.random.uniform(1, 5)
-        ped[2] = np.random.uniform(0.3, 0.7)
-        ped[3] = np.random.uniform(0.3, 0.7)
+        ped[0] = np.random.uniform(1, 14)
+        ped[1] = np.random.uniform(1, 4)
+        ped[2] = np.random.uniform(0.6, 1.2)
+        ped[3] = np.random.uniform(0.6, 1.2)
         dest_id = np.random.randint(0, len(dest))
         ped[4] = dest[dest_id][0]
         ped[5] = dest[dest_id][1]
@@ -138,10 +126,10 @@ def main():
     initial_state = np.array(initial_state)
 
     space = [
-        np.array([(x, 0) for x in np.linspace(0, 15, 1000)]),
-        np.array([(x,15) for x in np.linspace(0, 15, 1000)]),
-        np.array([( 0, y) for y in np.linspace(0, 15, 1000)]),
-        np.array([(15, y) for y in np.linspace(0, 15, 1000)])
+        np.array([(x, 0) for x in np.linspace(0, 20, 200)]),
+        np.array([(x, 5) for x in np.linspace(0, 20, 200)]),
+        np.array([( 0, y) for y in np.linspace(0, 5, 200)]),
+        np.array([(20, y) for y in np.linspace(0, 5, 200)])
     ]
     ped_space = socialforce.PedSpacePotential(space)
 

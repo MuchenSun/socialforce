@@ -111,24 +111,38 @@ def animate2(states, space, dest=None):
 
 def main():
     field_size = 15
-    num_peds = 20
+    num_peds = 10
+
     dest = np.array([
-            [2.0, 2.0],
-            [2.0, 7.5],
-            [2.0, 13.0],
-            [7.5, 2.0],
+            [1.0, 1.0],
+            [1.0, 7.5],
+            [1.0, 14.0],
+            [7.5, 1.0],
             [7.5, 7.5],
-            [7.5, 13.0],
-            [13.0, 2.0],
-            [13.0, 7.5],
-            [13.0, 13.0]
+            [7.5, 14.0],
+            [14.0, 1.0],
+            [14.0, 7.5],
+            [14.0, 14.0]
         ])
+    '''
+    dest = np.array([
+            [0.5, 0.5],
+            [0.5, 7.5],
+            [0.5, 14.5],
+            [7.5, 0.5],
+            [7.5, 7.5],
+            [7.5, 14.5],
+            [14.5, 0.5],
+            [14.5, 7.5],
+            [14.5, 14.5]
+        ])
+    '''
 
     initial_state = []
     for i in range(num_peds):
         ped = np.zeros(6)
-        ped[0] = np.random.uniform(1, 5)
-        ped[1] = np.random.uniform(1, 5)
+        ped[0] = np.random.uniform(1, 14)
+        ped[1] = np.random.uniform(1, 14)
         ped[2] = np.random.uniform(0.3, 0.7)
         ped[3] = np.random.uniform(0.3, 0.7)
         dest_id = np.random.randint(0, len(dest))
@@ -153,7 +167,10 @@ def main():
 
     print(space[0].shape)
 
+    np.save('/home/msun/Code/ErgodicBSP/ped_sim/sim_data_{}.npy'.format(num_peds), states)
+
     animate2(states, space, dest)
+
 
 if __name__ == "__main__":
     main()

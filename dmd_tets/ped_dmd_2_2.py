@@ -1,6 +1,7 @@
 """
-This test is based on test3, for testing different pedestrian
-motion with distance field
+This is second test for using DMD to pedestrain prediction, it's
+based on the first test
+I keep the parameters relatively good in this one
 """
 
 import sys
@@ -11,35 +12,16 @@ import numpy as np
 import pytest
 import socialforce
 import time
+from pydmd import HODMD, DMD
+from past.utils import old_div
+import matplotlib.pyplot as plt
+from matplotlib import animation
+
+
+ped_num = 30
+predict_len = 10
 
 def distance_field(grid, state):
-    """compute distance field"""
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        cell = grid[i,:]
-        dists = []
-        for j in range(state.shape[0]):
-            agent = state[j][0:2]
-            dist = np.sqrt( np.sum((cell-agent)**2) )
-            vals[i] += dist
-    vals = vals / np.sum(vals)
-    return vals
-
-def distance_field2(grid, state):
-    vals = np.zeros(grid.shape[0])
-    for i in range(state.shape[0]):
-        vals += np.sqrt( np.sum( (grid-state[i][0:2])**2 , axis=1) )
-    return vals / np.sum(vals)
-
-def distance_field3(grid, state):
-    start = time.time()
-    vals = np.zeros(grid.shape[0])
-    for i in range(grid.shape[0]):
-        vals[i] += np.sqrt( np.sum( (grid[i,:]-state[:,0:2])**2 , axis=1) ).min()
-    print("time: ", time.time()-start)
-    return vals / np.sum(vals)
-
-def distance_field4(grid, state):
     start = time.time()
     grid_x = grid[:,0]
     grid_y = grid[:,1]
@@ -49,13 +31,10 @@ def distance_field4(grid, state):
     diff_y = grid_y - state_y
     diff_xy = np.sqrt(diff_x**2 + diff_y**2)
     dist_xy = diff_xy.min(axis=0)
-    print("time: ", time.time()-start)
+    # print("time: ", time.time()-start)
     return dist_xy
 
 def animate2(states, space, dest=None):
-    import matplotlib.pyplot as plt
-    from matplotlib import animation
-
     # render data to get necessary parameters
     time = states.shape[0]
     num_ped = states.shape[1]
@@ -98,7 +77,7 @@ def animate2(states, space, dest=None):
 
         # Figure 2: distance field
         ax2.clear()
-        vals = distance_field4(grid, snapshot)
+        vals = distance_field(grid, snapshot)
         vals = vals.reshape(50,50)
         ax2.cla()
         ax2.contourf(*xy, vals, levels=50)
@@ -109,9 +88,10 @@ def animate2(states, space, dest=None):
     plt.show()
 
 
-def main():
+def data_gen():
     field_size = 15
-    num_peds = 20
+    # num_peds = 40
+    num_peds = ped_num
     dest = np.array([
             [2.0, 2.0],
             [2.0, 7.5],
@@ -127,8 +107,8 @@ def main():
     initial_state = []
     for i in range(num_peds):
         ped = np.zeros(6)
-        ped[0] = np.random.uniform(1, 5)
-        ped[1] = np.random.uniform(1, 5)
+        ped[0] = np.random.uniform(1, 14)
+        ped[1] = np.random.uniform(1, 14)
         ped[2] = np.random.uniform(0.3, 0.7)
         ped[3] = np.random.uniform(0.3, 0.7)
         dest_id = np.random.randint(0, len(dest))
@@ -149,11 +129,60 @@ def main():
                                        ped_space=ped_space,
                                        dest=dest,
                                        delta_t=0.1)
-    states = np.stack([s.step().state.copy() for _ in range(1000)])
+    states = np.stack([s.step().state.copy() for _ in range(1000 + predict_len)])
 
-    print(space[0].shape)
+    # print(space[0].shape)
 
-    animate2(states, space, dest)
+    # animate2(states, space, dest)
+    return states
 
 if __name__ == "__main__":
-    main()
+    states = data_gen()[:, :, 0:2]
+    print("test data generated.")
+    states = np.reshape(states, (states.shape[0], -1)).T
+    train_data = states[:,900:1001]
+    test_data = states[:,1000:]
+
+    start = time.time()
+    dmd = DMD(svd_rank=ped_num, opt=True)
+    dmd.fit(train_data)
+    print("DMD fit finished: ", time.time()-start)
+
+    omega = old_div(np.log(dmd.eigs), dmd.original_time['dt'])
+    dmd_timesteps = np.arange(100, 100+predict_len, 1)
+    vander = np.exp(np.outer( omega,  dmd_timesteps - dmd.original_time['t0'] ))
+    dynamics = vander * dmd._b[:, None]
+    test_data_dmd = np.dot(dmd.modes, dynamics)
+    print("DMD prediction finished.")
+
+    print(test_data.shape)
+    print((test_data_dmd[1,:] - test_data[1,:]).real)
+
+
+    print(train_data[0:10,-1])
+    print(test_data[0:10, 0])
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.set_aspect('equal', 'box')
+
+    snapshot = train_data[:, -1].reshape(ped_num, -1)
+    ped_xy = snapshot[:,0:2].T
+    ax.scatter(ped_xy[0], ped_xy[1], c='r', s=100)
+
+    diff = (test_data_dmd[:,0] - test_data[:,0]).real
+    print("diff.shape: ", diff.shape)
+    for i in range(diff.shape[0]):
+        test_data_dmd[i,:] -= diff[i]
+    test_data_dmd = test_data_dmd.real
+
+    print("verify first element truncation: ", test_data_dmd[0:10,0], test_data[0:10,0])
+
+    print(test_data.shape)
+    for p in range(ped_num):
+        traj = test_data[2*p : 2*p+2, :]
+        ax.scatter(traj[0,:], traj[1,:], c='b', s=5)
+
+        traj_dmd = test_data_dmd[2*p : 2*p+2, :]
+        ax.scatter(traj_dmd[0,:], traj_dmd[1,:], c='y', s=5)
+    plt.show()
